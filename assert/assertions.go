@@ -49,6 +49,8 @@ type ErrorAssertionFunc func(TestingT, error, ...interface{}) bool
 // Comparison is a custom function that returns true on success and false on failure
 type Comparison func() (success bool)
 
+type keyValue string
+
 /*
 	Helper functions
 */
@@ -190,6 +192,9 @@ func messageFromMsgAndArgs(msgAndArgs ...interface{}) string {
 		return fmt.Sprintf("%+v", msg)
 	}
 	if len(msgAndArgs) > 1 {
+		if _, ok := msgAndArgs[0].(keyValue); ok {
+			return ""
+		}
 		return fmt.Sprintf(msgAndArgs[0].(string), msgAndArgs[1:]...)
 	}
 	return ""
@@ -1216,8 +1221,15 @@ func InDelta(t TestingT, expected, actual interface{}, delta float64, msgAndArgs
 	af, aok := toFloat(expected)
 	bf, bok := toFloat(actual)
 
+	prefix := ""
+	if len(msgAndArgs) > 0 {
+		if key, ok := msgAndArgs[0].(keyValue); ok {
+			prefix = fmt.Sprintf("key[%q]: ", key)
+			msgAndArgs = msgAndArgs[1:]
+		}
+	}
 	if !aok || !bok {
-		return Fail(t, "Parameters must be numerical", msgAndArgs...)
+		return Fail(t, prefix+"Parameters must be numerical", msgAndArgs...)
 	}
 
 	if math.IsNaN(af) && math.IsNaN(bf) {
@@ -1225,16 +1237,16 @@ func InDelta(t TestingT, expected, actual interface{}, delta float64, msgAndArgs
 	}
 
 	if math.IsNaN(af) {
-		return Fail(t, "Expected must not be NaN", msgAndArgs...)
+		return Fail(t, prefix+"Expected must not be NaN", msgAndArgs...)
 	}
 
 	if math.IsNaN(bf) {
-		return Fail(t, fmt.Sprintf("Expected %v with delta %v, but was NaN", expected, delta), msgAndArgs...)
+		return Fail(t, fmt.Sprintf(prefix+"Expected %v with delta %v, but was NaN", expected, delta), msgAndArgs...)
 	}
 
 	dt := af - bf
 	if dt < -delta || dt > delta {
-		return Fail(t, fmt.Sprintf("Max difference between %v and %v allowed is %v, but difference was %v", expected, actual, delta, dt), msgAndArgs...)
+		return Fail(t, fmt.Sprintf(prefix+"Max difference between %v and %v allowed is %v, but difference was %v", expected, actual, delta, dt), msgAndArgs...)
 	}
 
 	return true
@@ -1294,6 +1306,7 @@ func InDeltaMapValues(t TestingT, expected, actual interface{}, delta float64, m
 			return Fail(t, fmt.Sprintf("missing key %q in actual map", k), msgAndArgs...)
 		}
 
+		msgAndArgs = append([]interface{}{keyValue(k.String())}, msgAndArgs...)
 		if !InDelta(
 			t,
 			ev.Interface(),
